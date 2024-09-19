@@ -21,6 +21,9 @@ import io.ktor.client.*
 import io.ktor.client.engine.cio.*
 import io.ktor.client.call.*
 import kotlinx.coroutines.*
+import org.jetbrains.io.response
+import tree_func.GetFilesInJson
+import org.json.JSONArray
 
 fun sendRequest(): String = runBlocking {
     val client = HttpClient(CIO)
@@ -34,19 +37,15 @@ fun sendRequest(): String = runBlocking {
     return@runBlocking response.status.toString()
 }
 
-
 class ToolWindowFactoryNew : ToolWindowFactory, DumbAware {
-//    private val apiKey = "YOUR_OPENAI_API_KEY_HERE"
     private val apiKey = "YOUR ADVERTISEMENT HERE!"
     override fun createToolWindowContent(project: Project, toolWindow: ToolWindow) {
         val label = JLabel("Plugin Tool Window")
-
         val promptField = JTextField(10)
         val fixedSize = Dimension(200, 50)
         promptField.preferredSize = fixedSize
         promptField.minimumSize = fixedSize
         promptField.maximumSize = fixedSize
-
         val directoryPath = JTextField(10)
         directoryPath.preferredSize = fixedSize
         directoryPath.minimumSize = fixedSize
@@ -64,14 +63,17 @@ class ToolWindowFactoryNew : ToolWindowFactory, DumbAware {
         val button = JButton("Send Query")
 
         button.addActionListener {
-            val enteredText = promptField.text
+            val enteredPrompt = promptField.text
+            val enteredPath = directoryPath.text
             responseArea.text = "Sending query..."
-            sendChatGPTQuery(enteredText, responseArea)
+            sendChatGPTQuery(enteredPrompt, enteredPath, responseArea)
         }
         val panel = JPanel()
         panel.layout = BoxLayout(panel, BoxLayout.Y_AXIS)
         panel.add(label)
+        panel.add(descriptionPrompt)
         panel.add(promptField)
+        panel.add(descriptionLabel)
         panel.add(directoryPath)
         panel.add(responseArea)
         panel.add(button)
@@ -81,27 +83,46 @@ class ToolWindowFactoryNew : ToolWindowFactory, DumbAware {
         toolWindow.contentManager.addContent(content)
     }
 
-    private fun sendChatGPTQuery(prompt: String, responseArea: JTextArea) {
-        val client = OkHttpClient()
+    private fun sendChatGPTQuery(prompt: String, dirPath: String, responseArea: JTextArea) {
+        val allFiles = GetFilesInJson(dirPath).listFilesInDirectory()
+        val systemMessageContent = """
+        You are a helpful assistant. Your task is to take all files from the directory that are provided here: 
+        ${allFiles.joinToString(", ", "[", "]")}. Given the user's prompt, help them find the most relevant file in this list of files.
+    """.trimIndent()
 
-        val requestBody = """
-            {
-              "model": "gpt-3.5-turbo",
-              "messages": [{"role": "user", "content": "$prompt"}]
-            }
-        """.trimIndent()
+        val requestBodyJson = JSONObject().apply {
+            put("model", "gpt-3.5-turbo")
+            put("messages", JSONArray().apply {
+                put(JSONObject().apply {
+                    put("role", "system")
+                    put("content", systemMessageContent)
+                })
+                put(JSONObject().apply {
+                    put("role", "user")
+                    put("content", prompt)
+                })
+            })
+        }
+
+        // Create the request body
+        val requestBody = RequestBody.create(
+            "application/json; charset=utf-8".toMediaTypeOrNull(),
+            requestBodyJson.toString()
+        )
 
         val request = Request.Builder()
             .url("https://api.openai.com/v1/chat/completions")
             .header("Authorization", "Bearer $apiKey")
             .header("Content-Type", "application/json")
-            .post(RequestBody.create("application/json; charset=utf-8".toMediaTypeOrNull(), requestBody))
+            .post(requestBody)
             .build()
 
+        val client = OkHttpClient()
         client.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
                 SwingUtilities.invokeLater {
-                    responseArea.text = "Error: ${e.message}"
+                    println("Error: ${e.message}")
+                    responseArea.text = e.message
                 }
             }
 
@@ -109,7 +130,8 @@ class ToolWindowFactoryNew : ToolWindowFactory, DumbAware {
                 response.use {
                     if (!response.isSuccessful) {
                         SwingUtilities.invokeLater {
-                            responseArea.text = "Error: ${response.message}"
+                            println("Error: ${response.message}")
+                            responseArea.text = response.message
                         }
                     } else {
                         val responseBody = response.body?.string()
@@ -119,6 +141,7 @@ class ToolWindowFactoryNew : ToolWindowFactory, DumbAware {
                             .getJSONObject("message")
                             .getString("content")
                         SwingUtilities.invokeLater {
+                            println(chatResponse)
                             responseArea.text = chatResponse
                         }
                     }
