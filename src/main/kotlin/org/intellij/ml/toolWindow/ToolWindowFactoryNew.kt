@@ -41,15 +41,11 @@ class ToolWindowFactoryNew : ToolWindowFactory, DumbAware {
     private val apiKey = "YOUR ADVERTISEMENT HERE!"
     override fun createToolWindowContent(project: Project, toolWindow: ToolWindow) {
         val label = JLabel("Plugin Tool Window")
-
-        val descriptionPrompt = JLabel("Enter Prompt: ")
         val promptField = JTextField(10)
         val fixedSize = Dimension(200, 50)
         promptField.preferredSize = fixedSize
         promptField.minimumSize = fixedSize
         promptField.maximumSize = fixedSize
-
-        val descriptionLabel = JLabel("Enter Directory Path: ")
         val directoryPath = JTextField(10)
         directoryPath.preferredSize = fixedSize
         directoryPath.minimumSize = fixedSize
@@ -114,7 +110,6 @@ class ToolWindowFactoryNew : ToolWindowFactory, DumbAware {
             requestBodyJson.toString()
         )
 
-        // Build the request
         val request = Request.Builder()
             .url("https://api.openai.com/v1/chat/completions")
             .header("Authorization", "Bearer $apiKey")
